@@ -1,0 +1,148 @@
+/* ============================================================
+   INDEX.CSS — Design Tokens & Core Resets (Reference UI Inspired)
+   ============================================================ */
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  /* ---- Dark Mode Tokens (Default) ---- */
+  --bg-page: #000000;
+  --bg-canvas: #09090b;
+  --bg-card-dark: #121216;
+  --bg-card-surface: #18181d;
+  --bg-card-hover: #22222a;
+  --bg-code-editor: #0c0c0f;
+  
+  /* High contrast hero card (matching the reference white card) */
+  --hero-card-bg: #ffffff;
+  --hero-card-text: #0a0a0c;
+  --hero-card-subtitle: #4a4a58;
+  --hero-tag-bg: #f2f2f7;
+  --hero-tag-text: #1c1c1e;
+  --hero-pill-border: rgba(0, 0, 0, 0.08);
+
+  /* Text colors */
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-dim: #52525b;
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-medium: rgba(255, 255, 255, 0.12);
+  --border-focus: #ff3b30;
+
+  /* Brand Accents (Vibrant Poppy Red from Reference UI Mascot) */
+  --accent-poppy: #ff3b30;
+  --accent-poppy-hover: #e02d23;
+  --accent-poppy-glow: rgba(255, 59, 48, 0.25);
+  --accent-poppy-subtle: rgba(255, 59, 48, 0.12);
+
+  /* Helper accents */
+  --accent-green: #30d158;
+  --accent-green-bg: rgba(48, 209, 88, 0.12);
+  --accent-yellow: #ffd60a;
+  --accent-blue: #0a84ff;
+  --accent-purple: #bf5af2;
+  --accent-orange: #ff9f0a;
+
+  /* macOS Traffic Light Colors */
+  --traffic-red: #ff5f56;
+  --traffic-yellow: #ffbd2e;
+  --traffic-green: #27c93f;
+
+  /* Elevation Shadows */
+  --shadow-window: 0 30px 80px -15px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-card: 0 12px 32px -4px rgba(0, 0, 0, 0.5);
+  --shadow-pill: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+  /* Radii */
+  --radius-pill: 9999px;
+  --radius-2xl: 20px;
+  --radius-3xl: 28px;
+  --radius-hero: 34px;
+
+  /* Fonts */
+  --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Transitions */
+  --ease-snappy: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-smooth: 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Light Theme Variables */
+[data-theme="light"] {
+  --bg-page: #f5f5f7;
+  --bg-canvas: #ffffff;
+  --bg-card-dark: #ffffff;
+  --bg-card-surface: #f2f2f7;
+  --bg-card-hover: #e5e5ea;
+  --bg-code-editor: #fbfbfd;
+
+  --hero-card-bg: #111116;
+  --hero-card-text: #ffffff;
+  --hero-card-subtitle: #a1a1aa;
+  --hero-tag-bg: rgba(255, 255, 255, 0.1);
+  --hero-tag-text: #f4f4f5;
+  --hero-pill-border: rgba(255, 255, 255, 0.1);
+
+  --text-primary: #1c1c1e;
+  --text-secondary: #636366;
+  --text-muted: #8e8e93;
+  --text-dim: #aeaeb2;
+
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-medium: rgba(0, 0, 0, 0.14);
+
+  --shadow-window: 0 24px 60px -12px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+html, body {
+  min-height: 100%;
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+code, pre {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--accent-poppy);
+  color: #ffffff;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
