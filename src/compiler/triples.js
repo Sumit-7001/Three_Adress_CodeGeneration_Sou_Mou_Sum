@@ -89,3 +89,20 @@ export function generateTriples(instructions) {
     };
   });
 }
+
+/**
+ * Generates Indirect Triples representation:
+ * An array of pointers to the triples table, alongside the triples.
+ * In optimizing compilers, instructions are reordered by modifying
+ * only the pointer array, without altering internal index references.
+ * 
+ * @param {Array} triples — from generateTriples
+ * @returns {{ pointers: Array<{ index: number, pointer: number }>, triples: Array }}
+ */
+export function generateIndirectTriples(triples) {
+  const pointers = triples.map((t, idx) => ({
+    index: idx,
+    pointer: t.index,
+  }));
+  return { pointers, triples };
+}

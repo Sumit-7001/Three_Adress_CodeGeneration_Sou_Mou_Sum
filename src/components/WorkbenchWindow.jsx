@@ -4,11 +4,12 @@ import OutputPanel from './OutputPanel.jsx';
 
 /**
  * WorkbenchWindow — A macOS-inspired dark window container
- * Matching the exact visual aesthetic from the reference image.
+ * Matching the exact visual aesthetic with editor and generated TAC output.
  */
 export default function WorkbenchWindow({
   expression, setExpression, onGenerate, onClear,
-  result, onCopy, onDownload
+  result, onCopy, onDownload,
+  liveMode, setLiveMode,
 }) {
   return (
     <div className="macos-window-shell">
@@ -23,7 +24,7 @@ export default function WorkbenchWindow({
           <span className="title-text">tac-generator — compiler-workbench</span>
         </div>
         <div className="window-meta">
-          <span className="window-badge">LL(1) Recursive Descent</span>
+          <span className="window-badge">LL(1) Recursive Descent • CSE Optimizer</span>
         </div>
       </div>
 
@@ -34,6 +35,9 @@ export default function WorkbenchWindow({
           setExpression={setExpression}
           onGenerate={onGenerate}
           onClear={onClear}
+          liveMode={liveMode}
+          setLiveMode={setLiveMode}
+          tokenCount={result?.tokens?.length || 0}
         />
         <div className="split-divider" />
         <OutputPanel

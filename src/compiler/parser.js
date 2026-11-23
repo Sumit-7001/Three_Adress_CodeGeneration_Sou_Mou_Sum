@@ -168,11 +168,37 @@ export function parse(tokens) {
   }
 
   /**
-   * expression → term (( '+' | '-' ) term)*
+   * expression → relational
+   */
+  function parseExpression() {
+    return parseRelational();
+  }
+
+  /**
+   * relational → additive (( '==' | '!=' | '<=' | '>=' | '<' | '>' ) additive)*
+   */
+  function parseRelational() {
+    let left = parseAdditive();
+
+    const relOps = ['==', '!=', '<=', '>=', '<', '>'];
+    while (
+      peek().type === TokenType.OPERATOR &&
+      relOps.includes(peek().value)
+    ) {
+      const op = advance().value;
+      const right = parseAdditive();
+      left = BinaryOp(op, left, right);
+    }
+
+    return left;
+  }
+
+  /**
+   * additive → term (( '+' | '-' ) term)*
    * 
    * Handles addition and subtraction with left associativity.
    */
-  function parseExpression() {
+  function parseAdditive() {
     let left = parseTerm();
 
     while (
@@ -188,21 +214,40 @@ export function parse(tokens) {
   }
 
   /**
-   * term → unary (( '*' | '/' ) unary)*
+   * term → unary (( '*' | '/' | '%' ) unary)*
    * 
-   * Handles multiplication and division with left associativity.
-   * These bind more tightly than + and -.
+   * Handles multiplication, division, and modulo with left associativity.
    */
   function parseTerm() {
-    let left = parseUnary();
+    let left = parsePower();
 
     while (
       peek().type === TokenType.OPERATOR &&
-      (peek().value === '*' || peek().value === '/')
+      (peek().value === '*' || peek().value === '/' || peek().value === '%')
     ) {
       const op = advance().value;
-      const right = parseUnary();
+      const right = parsePower();
       left = BinaryOp(op, left, right);
+    }
+
+    return left;
+  }
+
+  /**
+   * power → unary ( '^' power )?
+   * 
+   * Handles right-associative exponentiation: 2 ^ 3 ^ 2 = 2 ^ (3 ^ 2)
+   */
+  function parsePower() {
+    const left = parseUnary();
+
+    if (
+      peek().type === TokenType.OPERATOR &&
+      peek().value === '^'
+    ) {
+      const op = advance().value;
+      const right = parsePower(); // right-recursive for right-associativity
+      return BinaryOp(op, left, right);
     }
 
     return left;

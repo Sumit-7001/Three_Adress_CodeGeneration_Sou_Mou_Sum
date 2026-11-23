@@ -73,6 +73,20 @@ export function tokenize(input) {
   while (pos < input.length) {
     const ch = input[pos];
 
+    // ---- Skip comments: // or # until end of line ----
+    if (ch === '/' && pos + 1 < input.length && input[pos + 1] === '/') {
+      while (pos < input.length && input[pos] !== '\n') {
+        pos++;
+      }
+      continue;
+    }
+    if (ch === '#') {
+      while (pos < input.length && input[pos] !== '\n') {
+        pos++;
+      }
+      continue;
+    }
+
     // ---- Skip whitespace ----
     if (/\s/.test(ch)) {
       pos++;
@@ -108,15 +122,54 @@ export function tokenize(input) {
       continue;
     }
 
-    // ---- Assignment operator ----
+    // ---- Relational & Equality operators (==, !=, <=, >=) ----
+    if (ch === '=' && pos + 1 < input.length && input[pos + 1] === '=') {
+      tokens.push(createToken(TokenType.OPERATOR, '==', pos));
+      pos += 2;
+      continue;
+    }
+    if (ch === '!' && pos + 1 < input.length && input[pos + 1] === '=') {
+      tokens.push(createToken(TokenType.OPERATOR, '!=', pos));
+      pos += 2;
+      continue;
+    }
+    if (ch === '<' && pos + 1 < input.length && input[pos + 1] === '=') {
+      tokens.push(createToken(TokenType.OPERATOR, '<=', pos));
+      pos += 2;
+      continue;
+    }
+    if (ch === '>' && pos + 1 < input.length && input[pos + 1] === '=') {
+      tokens.push(createToken(TokenType.OPERATOR, '>=', pos));
+      pos += 2;
+      continue;
+    }
+    if (ch === '<') {
+      tokens.push(createToken(TokenType.OPERATOR, '<', pos));
+      pos++;
+      continue;
+    }
+    if (ch === '>') {
+      tokens.push(createToken(TokenType.OPERATOR, '>', pos));
+      pos++;
+      continue;
+    }
+
+    // ---- Assignment operator (=) ----
     if (ch === '=') {
       tokens.push(createToken(TokenType.ASSIGN, '=', pos));
       pos++;
       continue;
     }
 
-    // ---- Arithmetic operators ----
-    if ('+-*/'.includes(ch)) {
+    // ---- Exponentiation (**) as ^ ----
+    if (ch === '*' && pos + 1 < input.length && input[pos + 1] === '*') {
+      tokens.push(createToken(TokenType.OPERATOR, '^', pos));
+      pos += 2;
+      continue;
+    }
+
+    // ---- Arithmetic operators (+, -, *, /, %, ^) ----
+    if ('+-*/%^'.includes(ch)) {
       tokens.push(createToken(TokenType.OPERATOR, ch, pos));
       pos++;
       continue;

@@ -28,7 +28,9 @@ import { tokenize } from './lexer.js';
 import { parse } from './parser.js';
 import { generateTAC, formatTAC } from './tacGenerator.js';
 import { generateQuadruples } from './quadruples.js';
-import { generateTriples } from './triples.js';
+import { generateTriples, generateIndirectTriples } from './triples.js';
+import { optimizeTAC } from './optimizer.js';
+import { extractVariables } from './simulator.js';
 
 /**
  * Generates step-by-step explanations for each TAC instruction.
@@ -50,19 +52,27 @@ function generateExplanation(instructions) {
         '-': 'Subtract',
         '*': 'Multiply',
         '/': 'Divide',
+        '%': 'Compute modulo remainder of',
+        '^': 'Raise',
+        '==': 'Test equality of',
+        '!=': 'Test inequality of',
+        '<': 'Check if',
+        '<=': 'Check if',
+        '>': 'Check if',
+        '>=': 'Check if',
       };
-      const opVerbs = {
-        '+': 'to',
-        '-': 'from',
-        '*': 'by',
-        '/': 'by',
-      };
-      const opName = opNames[instr.op] || instr.op;
+      const opName = opNames[instr.op] || `Apply ${instr.op} to`;
       
       if (instr.op === '-') {
         explanation = `${opName} ${instr.arg2} from ${instr.arg1} and store the result in temporary variable ${instr.result}.`;
       } else if (instr.op === '/') {
         explanation = `${opName} ${instr.arg1} by ${instr.arg2} and store the result in temporary variable ${instr.result}.`;
+      } else if (instr.op === '^') {
+        explanation = `Calculate ${instr.arg1} to the power of ${instr.arg2} and store in temporary variable ${instr.result}.`;
+      } else if (instr.op === '%') {
+        explanation = `Calculate remainder of ${instr.arg1} divided by ${instr.arg2} into temporary variable ${instr.result}.`;
+      } else if (['==', '!=', '<', '<=', '>', '>='].includes(instr.op)) {
+        explanation = `Evaluate condition (${instr.arg1} ${instr.op} ${instr.arg2}) and store boolean result (1/0) in ${instr.result}.`;
       } else {
         explanation = `${opName} ${instr.arg1} and ${instr.arg2} and store the result in temporary variable ${instr.result}.`;
       }
@@ -119,11 +129,21 @@ export function compile(input) {
   // Phase 4: Quadruples
   const quadruples = generateQuadruples(instructions);
 
-  // Phase 5: Triples
+  // Phase 5: Triples & Indirect Triples
   const triples = generateTriples(instructions);
+  const indirectTriples = generateIndirectTriples(triples);
 
   // Phase 6: Step-by-step Explanation
   const explanation = generateExplanation(instructions);
+
+  // Phase 7: Optimization Analysis (CSE & Constant Folding)
+  const optimized = optimizeTAC(instructions);
+  const optimizedTac = formatTAC(optimized.instructions);
+  const optimizedQuadruples = generateQuadruples(optimized.instructions);
+  const optimizedTriples = generateTriples(optimized.instructions);
+
+  // Phase 8: Extracted variable list for simulator
+  const variables = extractVariables(instructions);
 
   return {
     success: true,
@@ -134,9 +154,18 @@ export function compile(input) {
     instructions,
     quadruples,
     triples,
+    indirectTriples,
     explanation,
     tempCount,
     instructionCount: instructions.length,
+    variables,
+    optimized: {
+      instructions: optimized.instructions,
+      tac: optimizedTac,
+      quadruples: optimizedQuadruples,
+      triples: optimizedTriples,
+      stats: optimized.stats,
+    },
   };
 }
 
@@ -145,4 +174,6 @@ export { tokenize } from './lexer.js';
 export { parse } from './parser.js';
 export { generateTAC, formatTAC } from './tacGenerator.js';
 export { generateQuadruples } from './quadruples.js';
-export { generateTriples } from './triples.js';
+export { generateTriples, generateIndirectTriples } from './triples.js';
+export { optimizeTAC } from './optimizer.js';
+export { simulateTAC, extractVariables } from './simulator.js';

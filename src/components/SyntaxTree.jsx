@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   GitBranch, ZoomIn, ZoomOut, RotateCcw, Download,
-  Layers, Check, Sparkles
+  Layers, Check, Sparkles, Maximize2, Minimize2,
+  Info, Image as ImageIcon, X
 } from 'lucide-react';
 
 /**
@@ -9,7 +10,8 @@ import {
  * with colors and typography matching the compiler reference design:
  *   - Assignment '=' : Deep Blue (#1d4ed8)
  *   - Add/Sub '+', '-' : Vibrant Green (#16a34a)
- *   - Mul/Div '*', '/' : Vibrant Purple (#7c3aed)
+ *   - Mul/Div/Power '*', '/', '^', '%' : Vibrant Purple (#7c3aed)
+ *   - Relational '==', '<', etc. : Emerald Green (#16a34a)
  *   - Variables/Identifiers : Vermilion Orange (#ea580c) with Serif font
  *   - Numeric Literals : Vermilion Orange (#ea580c)
  */
@@ -25,6 +27,7 @@ function toHierarchy(node, id = '0') {
       fontFamily: "system-ui, -apple-system, 'SF Pro Display', sans-serif",
       fontWeight: '800',
       description: 'Assignment Operator (=)',
+      subExpr: `${node.variable} = ...`,
       children: [
         {
           id: `${id}-0`,
@@ -33,7 +36,8 @@ function toHierarchy(node, id = '0') {
           color: '#ea580c',
           fontFamily: "Georgia, 'Times New Roman', Cambria, serif",
           fontWeight: '700',
-          description: `Variable (${node.variable})`,
+          description: `Variable L-Value (${node.variable})`,
+          subExpr: node.variable,
           children: [],
         },
         toHierarchy(node.expression, `${id}-1`),
@@ -42,7 +46,7 @@ function toHierarchy(node, id = '0') {
   }
 
   if (node.type === 'BinaryOp') {
-    const isMulDiv = node.op === '*' || node.op === '/';
+    const isMulDiv = node.op === '*' || node.op === '/' || node.op === '%' || node.op === '^';
     const color = isMulDiv ? '#7c3aed' : '#16a34a';
     return {
       id,
@@ -51,7 +55,7 @@ function toHierarchy(node, id = '0') {
       color,
       fontFamily: "system-ui, -apple-system, 'SF Pro Display', sans-serif",
       fontWeight: '800',
-      description: `Arithmetic Operator (${node.op})`,
+      description: `Binary Operator (${node.op})`,
       children: [
         toHierarchy(node.left, `${id}-0`),
         toHierarchy(node.right, `${id}-1`),
@@ -81,6 +85,7 @@ function toHierarchy(node, id = '0') {
       fontFamily: "Georgia, 'Times New Roman', Cambria, serif",
       fontWeight: '700',
       description: `Identifier (${node.name})`,
+      subExpr: node.name,
       children: [],
     };
   }
@@ -94,6 +99,7 @@ function toHierarchy(node, id = '0') {
       fontFamily: "Georgia, 'Times New Roman', Cambria, serif",
       fontWeight: '700',
       description: `Numeric Literal (${node.value})`,
+      subExpr: String(node.value),
       children: [],
     };
   }
@@ -107,7 +113,7 @@ function toHierarchy(node, id = '0') {
  * clean diagonal branch lines (Walker / Leaf-slot algorithm).
  */
 function layoutAST(rootNode) {
-  if (!rootNode) return { nodes: [], links: [], width: 400, height: 300 };
+  if (!rootNode) return { nodes: [], links: [], width: 400, height: 300, stats: {} };
 
   const R = 28; // node circle radius
   const leafGap = 86; // horizontal leaf spacing
@@ -199,10 +205,15 @@ function layoutAST(rootNode) {
   let minX = Infinity;
   let maxX = -Infinity;
   let maxDepth = 0;
+  let leafCount = 0;
+  let opCount = 0;
+
   for (const n of nodes) {
     if (n.x < minX) minX = n.x;
     if (n.x > maxX) maxX = n.x;
     if (n.depth > maxDepth) maxDepth = n.depth;
+    if (!n.children || n.children.length === 0) leafCount++;
+    if (n.nodeType === 'op' || n.nodeType === 'assign' || n.nodeType === 'unary') opCount++;
   }
 
   const paddingX = 64;
@@ -217,12 +228,25 @@ function layoutAST(rootNode) {
   const width = Math.max(maxX - minX + paddingX * 2, 340);
   const height = maxDepth * levelGap + paddingTop + paddingBottom;
 
-  return { nodes, links, width, height, radius: R };
+  return {
+    nodes,
+    links,
+    width,
+    height,
+    radius: R,
+    stats: {
+      totalNodes: nodes.length,
+      maxDepth: maxDepth + 1,
+      leafCount,
+      opCount,
+    },
+  };
 }
 
 function getNodeFontSize(label, nodeType) {
   const str = String(label);
   if (nodeType === 'assign' || nodeType === 'op' || nodeType === 'unary') {
+    if (str.length > 1) return 20;
     return str === '=' ? 30 : str === '*' ? 28 : 28;
   }
   if (str.length <= 1) return 24;
@@ -236,7 +260,16 @@ export default function SyntaxTree({ ast }) {
   const [zoom, setZoom] = useState(1);
   const [viewMode, setViewMode] = useState('reference'); // 'reference' | 'detailed'
   const [selectedStmtIndex, setSelectedStmtIndex] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [inspectedNode, setInspectedNode] = useState(null);
+
+  // Pan state for dragging the canvas
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
   const svgRef = useRef(null);
+  const stageRef = useRef(null);
 
   if (!ast) {
     return (
@@ -256,9 +289,32 @@ export default function SyntaxTree({ ast }) {
   const layout = useMemo(() => layoutAST(hierarchy), [hierarchy]);
 
   // Zoom handlers
-  const handleZoomIn = () => setZoom(z => Math.min(Number((z + 0.15).toFixed(2)), 2.2));
-  const handleZoomOut = () => setZoom(z => Math.max(Number((z - 0.15).toFixed(2)), 0.5));
-  const handleResetZoom = () => setZoom(1);
+  const handleZoomIn = () => setZoom(z => Math.min(Number((z + 0.15).toFixed(2)), 2.5));
+  const handleZoomOut = () => setZoom(z => Math.max(Number((z - 0.15).toFixed(2)), 0.4));
+  const handleResetZoom = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  // Drag-to-pan handlers
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return; // only left click
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX - pan.x,
+      y: e.clientY - pan.y,
+    };
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    setPan({
+      x: e.clientX - dragStartRef.current.x,
+      y: e.clientY - dragStartRef.current.y,
+    });
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
 
   // Download SVG
   const handleDownloadSVG = () => {
@@ -275,8 +331,41 @@ export default function SyntaxTree({ ast }) {
     URL.revokeObjectURL(url);
   };
 
+  // Download High-Resolution PNG (2x scale)
+  const handleDownloadPNG = () => {
+    if (!svgRef.current) return;
+    const svgEl = svgRef.current;
+    const svgString = new XMLSerializer().serializeToString(svgEl);
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2; // 2x retina crispness
+      const canvas = document.createElement('canvas');
+      canvas.width = layout.width * scale;
+      canvas.height = layout.height * scale;
+      const ctx = canvas.getContext('2d');
+
+      // Draw dark canvas background matching reference image
+      ctx.fillStyle = '#060913';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = `syntax-tree-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+    img.src = url;
+  };
+
   return (
-    <div className="analysis-card-inner">
+    <div className={`analysis-card-inner ${isFullscreen ? 'ast-fullscreen-active' : ''}`}>
       {/* Top Header Bar */}
       <div className="table-top-bar">
         <div>
@@ -286,6 +375,12 @@ export default function SyntaxTree({ ast }) {
           </p>
         </div>
         <div className="ast-header-actions">
+          {/* Tree Statistics Pills */}
+          <div className="ast-meta-pills">
+            <span className="count-pill">{layout.stats.totalNodes} Nodes</span>
+            <span className="count-pill depth-pill">{layout.stats.maxDepth} Levels</span>
+          </div>
+
           <div className="view-mode-toggle">
             <button
               className={`mode-btn ${viewMode === 'reference' ? 'active' : ''}`}
@@ -316,7 +411,10 @@ export default function SyntaxTree({ ast }) {
               <button
                 key={idx}
                 className={`statement-pill ${selectedStmtIndex === idx ? 'active' : ''}`}
-                onClick={() => setSelectedStmtIndex(idx)}
+                onClick={() => {
+                  setSelectedStmtIndex(idx);
+                  setInspectedNode(null);
+                }}
               >
                 <span>Instruction {idx + 1}</span>
                 {stmt.type === 'Assignment' && (
@@ -330,7 +428,7 @@ export default function SyntaxTree({ ast }) {
 
       {/* Main Canvas Area */}
       {viewMode === 'reference' ? (
-        <div className="ast-visual-container">
+        <div className={`ast-visual-container ${isFullscreen ? 'fullscreen-container' : ''}`}>
           {/* Controls Toolbar */}
           <div className="ast-canvas-toolbar">
             <div className="ast-legend">
@@ -344,7 +442,7 @@ export default function SyntaxTree({ ast }) {
               </span>
               <span className="legend-item">
                 <span className="legend-dot mul-dot" />
-                <span className="legend-text">* / /</span>
+                <span className="legend-text">* / / / ^ / %</span>
               </span>
               <span className="legend-item">
                 <span className="legend-dot id-dot" />
@@ -360,87 +458,164 @@ export default function SyntaxTree({ ast }) {
               <button className="icon-ctrl-btn" onClick={handleZoomIn} title="Zoom In">
                 <ZoomIn size={14} />
               </button>
-              <button className="icon-ctrl-btn" onClick={handleResetZoom} title="Reset View">
+              <button className="icon-ctrl-btn" onClick={handleResetZoom} title="Reset Zoom & Pan">
                 <RotateCcw size={14} />
               </button>
-              <button className="icon-ctrl-btn highlight" onClick={handleDownloadSVG} title="Download SVG Diagram">
+
+              <div className="ctrl-btn-separator" />
+
+              <button className="icon-ctrl-btn highlight" onClick={handleDownloadPNG} title="Download High-Res PNG">
+                <ImageIcon size={14} />
+                <span className="ctrl-btn-text">PNG</span>
+              </button>
+
+              <button className="icon-ctrl-btn highlight" onClick={handleDownloadSVG} title="Download Vector SVG">
                 <Download size={14} />
                 <span className="ctrl-btn-text">SVG</span>
+              </button>
+
+              <button
+                className="icon-ctrl-btn"
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen View'}
+              >
+                {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
             </div>
           </div>
 
-          {/* SVG Diagram Canvas */}
-          <div className="ast-canvas-stage">
-            <svg
-              ref={svgRef}
-              className="ast-svg-canvas"
-              viewBox={`0 0 ${layout.width} ${layout.height}`}
+          {/* Interactive Drag & Pan SVG Stage */}
+          <div
+            ref={stageRef}
+            className={`ast-canvas-stage ${isDragging ? 'is-dragging' : ''}`}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
+            <div
+              className="ast-transform-layer"
               style={{
-                width: `${layout.width * zoom}px`,
-                height: `${layout.height * zoom}px`,
+                transform: `translate(${pan.x}px, ${pan.y}px)`,
+                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
               }}
-              xmlns="http://www.w3.org/2000/svg"
             >
-              <defs>
-                <filter id="node-shadow" x="-30%" y="-30%" width="160%" height="160%">
-                  <feDropShadow dx="0" dy="3" stdDeviation="4.5" floodColor="#000000" floodOpacity="0.45" />
-                </filter>
-              </defs>
+              <svg
+                ref={svgRef}
+                className="ast-svg-canvas"
+                viewBox={`0 0 ${layout.width} ${layout.height}`}
+                style={{
+                  width: `${layout.width * zoom}px`,
+                  height: `${layout.height * zoom}px`,
+                }}
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <defs>
+                  <filter id="node-shadow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feDropShadow dx="0" dy="3" stdDeviation="4.5" floodColor="#000000" floodOpacity="0.45" />
+                  </filter>
+                  <filter id="node-glow" x="-40%" y="-40%" width="180%" height="180%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#38bdf8" floodOpacity="0.8" />
+                  </filter>
+                </defs>
 
-              {/* Connecting Branch Lines (rendered first so circles cover them seamlessly) */}
-              <g className="ast-branch-lines">
-                {layout.links.map((link, idx) => (
-                  <line
-                    key={`line-${idx}`}
-                    x1={link.source.x}
-                    y1={link.source.y}
-                    x2={link.target.x}
-                    y2={link.target.y}
-                    stroke="#ffffff"
-                    strokeWidth="2.8"
-                    strokeLinecap="round"
-                    className="ast-tree-line"
-                  />
-                ))}
-              </g>
+                {/* Connecting Branch Lines (rendered first so circles cover them cleanly) */}
+                <g className="ast-branch-lines">
+                  {layout.links.map((link, idx) => (
+                    <line
+                      key={`line-${idx}`}
+                      x1={link.source.x}
+                      y1={link.source.y}
+                      x2={link.target.x}
+                      y2={link.target.y}
+                      stroke="#ffffff"
+                      strokeWidth="2.8"
+                      strokeLinecap="round"
+                      className="ast-tree-line"
+                    />
+                  ))}
+                </g>
 
-              {/* Circular Tree Nodes (matching user's reference diagram) */}
-              <g className="ast-nodes-group">
-                {layout.nodes.map(node => {
-                  const fontSize = getNodeFontSize(node.label, node.nodeType);
-                  return (
-                    <g key={node.id} className="ast-node-element" tabIndex="0">
-                      <title>{node.description || node.label}</title>
-                      {/* Crisp White Circular Disc */}
-                      <circle
-                        cx={node.x}
-                        cy={node.y}
-                        r={layout.radius}
-                        fill="#ffffff"
-                        filter="url(#node-shadow)"
-                        className="ast-node-circle"
-                      />
-                      {/* Colorful Centered Symbol / Variable */}
-                      <text
-                        x={node.x}
-                        y={node.y}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fill={node.color}
-                        fontSize={fontSize}
-                        fontWeight={node.fontWeight || '700'}
-                        fontFamily={node.fontFamily}
-                        className="ast-node-text"
-                        style={{ pointerEvents: 'none', userSelect: 'none' }}
+                {/* Circular Tree Nodes (matching user's reference diagram) */}
+                <g className="ast-nodes-group">
+                  {layout.nodes.map(node => {
+                    const fontSize = getNodeFontSize(node.label, node.nodeType);
+                    const isSelected = inspectedNode?.id === node.id;
+                    return (
+                      <g
+                        key={node.id}
+                        className={`ast-node-element ${isSelected ? 'selected' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setInspectedNode(node);
+                        }}
                       >
-                        {node.label}
-                      </text>
-                    </g>
-                  );
-                })}
-              </g>
-            </svg>
+                        <title>{node.description || node.label}</title>
+                        {/* Crisp White Circular Disc */}
+                        <circle
+                          cx={node.x}
+                          cy={node.y}
+                          r={layout.radius}
+                          fill="#ffffff"
+                          filter={isSelected ? 'url(#node-glow)' : 'url(#node-shadow)'}
+                          stroke={isSelected ? '#38bdf8' : 'none'}
+                          strokeWidth={isSelected ? '3' : '0'}
+                          className="ast-node-circle"
+                        />
+                        {/* Colorful Centered Symbol / Variable */}
+                        <text
+                          x={node.x}
+                          y={node.y}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fill={node.color}
+                          fontSize={fontSize}
+                          fontWeight={node.fontWeight || '700'}
+                          fontFamily={node.fontFamily}
+                          className="ast-node-text"
+                          style={{ pointerEvents: 'none', userSelect: 'none' }}
+                        >
+                          {node.label}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              </svg>
+            </div>
+
+            {/* Interactive Node Inspector Card on Click */}
+            {inspectedNode && (
+              <div className="ast-inspector-card" onClick={e => e.stopPropagation()}>
+                <div className="inspector-header">
+                  <div className="inspector-title">
+                    <span className="inspector-dot" style={{ background: inspectedNode.color }} />
+                    <strong>Node: {inspectedNode.label}</strong>
+                  </div>
+                  <button
+                    className="inspector-close-btn"
+                    onClick={() => setInspectedNode(null)}
+                    title="Close inspector"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="inspector-body">
+                  <div className="inspector-row">
+                    <span className="row-k">Classification</span>
+                    <span className="row-v">{inspectedNode.description}</span>
+                  </div>
+                  <div className="inspector-row">
+                    <span className="row-k">Tree Depth</span>
+                    <span className="row-v">Level {inspectedNode.depth + 1}</span>
+                  </div>
+                  <div className="inspector-row">
+                    <span className="row-k">Sub-nodes</span>
+                    <span className="row-v">{inspectedNode.children?.length || 0} children</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (

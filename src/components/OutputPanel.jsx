@@ -1,16 +1,60 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Copy, Download, CheckCircle2, AlertTriangle, FileCode,
-  Layers, Terminal, Check
+  Layers, Terminal, Check, Sparkles, Zap, FileJson, Table
 } from 'lucide-react';
 
 export default function OutputPanel({ result, onCopy, onDownload }) {
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
+  const [tacMode, setTacMode] = useState('standard'); // 'standard' | 'optimized'
+  const [copiedFormat, setCopiedFormat] = useState(null);
 
-  const handleCopyClick = () => {
-    onCopy();
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyClick = (format = 'txt') => {
+    if (!result) return;
+
+    if (format === 'txt') {
+      const activeTac = tacMode === 'optimized' && result.optimized?.tac
+        ? result.optimized.tac
+        : result.tac;
+      navigator.clipboard.writeText(activeTac.join('\n')).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    } else if (format === 'markdown') {
+      const activeInstructions = tacMode === 'optimized' && result.optimized?.instructions
+        ? result.optimized.instructions
+        : result.instructions;
+
+      const mdTable = [
+        '| # | TAC Instruction | Operator | Arg1 | Arg2 | Result |',
+        '|---|-----------------|----------|------|------|--------|',
+        ...activeInstructions.map((instr, idx) => {
+          const formatted = instr.op === '='
+            ? `${instr.result} = ${instr.arg1}`
+            : instr.op === 'neg'
+            ? `${instr.result} = -${instr.arg1}`
+            : `${instr.result} = ${instr.arg1} ${instr.op} ${instr.arg2}`;
+          return `| ${idx + 1} | \`${formatted}\` | \`${instr.op}\` | \`${instr.arg1 || '—'}\` | \`${instr.arg2 || '—'}\` | \`${instr.result}\` |`;
+        }),
+      ].join('\n');
+
+      navigator.clipboard.writeText(mdTable).then(() => {
+        setCopiedFormat('markdown');
+        setTimeout(() => setCopiedFormat(null), 2000);
+      });
+    }
+  };
+
+  const handleDownloadJSON = () => {
+    if (!result) return;
+    const jsonStr = JSON.stringify(result, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tac-compilation-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (!result) {
@@ -62,31 +106,80 @@ export default function OutputPanel({ result, onCopy, onDownload }) {
     );
   }
 
+  const activeTac = tacMode === 'optimized' && result.optimized?.tac
+    ? result.optimized.tac
+    : result.tac;
+
+  const hasOptimization = result.optimized?.stats?.savedInstructions > 0 || result.optimized?.stats?.foldedCount > 0;
+
   return (
     <div className="workbench-pane output-pane">
+      {/* Pane Header */}
       <div className="pane-subheader">
         <div className="pane-title-group">
           <span className="pane-file-dot success" />
           <span className="pane-title">Three Address Code</span>
         </div>
+
         <div className="output-actions-group">
-          <span className="status-pill success">
-            <CheckCircle2 size={12} /> Valid AST
-          </span>
-          <button className="icon-pill-btn" onClick={handleCopyClick} title="Copy Three Address Code">
+          {/* Mode Switcher: Standard vs Optimized */}
+          <div className="tac-mode-selector">
+            <button
+              className={`mode-pill ${tacMode === 'standard' ? 'active' : ''}`}
+              onClick={() => setTacMode('standard')}
+              title="Standard Three Address Code"
+            >
+              Standard
+            </button>
+            <button
+              className={`mode-pill ${tacMode === 'optimized' ? 'active' : ''}`}
+              onClick={() => setTacMode('optimized')}
+              title="Optimized TAC with Common Subexpression Elimination and Constant Folding"
+            >
+              <Zap size={12} />
+              <span>Optimized</span>
+              {hasOptimization && <span className="opt-badge-dot" />}
+            </button>
+          </div>
+
+          <button className="icon-pill-btn" onClick={() => handleCopyClick('txt')} title="Copy Three Address Code">
             {copied ? <Check size={14} className="text-green" /> : <Copy size={14} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
-          <button className="icon-pill-btn" onClick={onDownload} title="Download TAC as TXT">
+
+          <button className="icon-pill-btn" onClick={() => handleCopyClick('markdown')} title="Copy as Markdown table">
+            {copiedFormat === 'markdown' ? <Check size={14} className="text-green" /> : <Table size={14} />}
+            <span>MD</span>
+          </button>
+
+          <button className="icon-pill-btn" onClick={onDownload} title="Download TAC as text file">
             <Download size={14} />
             <span>TXT</span>
+          </button>
+
+          <button className="icon-pill-btn" onClick={handleDownloadJSON} title="Export full compiler JSON">
+            <FileJson size={14} />
+            <span>JSON</span>
           </button>
         </div>
       </div>
 
+      {/* Optimization Banner if in optimized mode */}
+      {tacMode === 'optimized' && (
+        <div className="opt-status-banner">
+          <Zap size={14} className="opt-bolt-icon" />
+          <span>
+            {hasOptimization
+              ? `Optimization applied: ${result.optimized.stats.savedInstructions} redundant instructions saved, ${result.optimized.stats.foldedCount} constants folded.`
+              : 'Expression is already optimal. No redundant subexpressions detected.'}
+          </span>
+        </div>
+      )}
+
+      {/* Code Display Area */}
       <div className="tac-code-area">
         <div className="tac-code-lines">
-          {result.tac.map((line, idx) => (
+          {activeTac.map((line, idx) => (
             <div key={idx} className="tac-code-row">
               <span className="row-num">{idx + 1}</span>
               <span className="row-content">{formatTACLine(line)}</span>
@@ -95,10 +188,11 @@ export default function OutputPanel({ result, onCopy, onDownload }) {
         </div>
       </div>
 
+      {/* Footer Meta Statistics */}
       <div className="pane-footer-stats">
         <div className="stat-pill">
           <span className="stat-label">Instructions</span>
-          <span className="stat-value">{result.instructionCount}</span>
+          <span className="stat-value">{activeTac.length}</span>
         </div>
         <div className="stat-pill">
           <span className="stat-label">Temporaries</span>
@@ -108,19 +202,27 @@ export default function OutputPanel({ result, onCopy, onDownload }) {
           <span className="stat-label">Format</span>
           <span className="stat-value">x = y op z</span>
         </div>
+        {hasOptimization && (
+          <div className="stat-pill opt-benefit-pill">
+            <span className="stat-label">Efficiency</span>
+            <span className="stat-value green-accent">
+              +{Math.round((result.optimized.stats.savedInstructions / result.instructions.length) * 100)}% CSE
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 /**
- * Highlights TAC tokens: temporaries (t1, t2), variables, operators, and literals.
+ * Highlights TAC tokens: temporaries (t1, t2), user variables, operators, and literals.
  */
 function formatTACLine(line) {
   const match = line.match(/^(\S+)\s*=\s*(.+)$/);
   if (!match) return line;
 
-  const result = match[1];
+  const resultVar = match[1];
   const rhs = match[2];
 
   const elements = [];
@@ -129,15 +231,15 @@ function formatTACLine(line) {
 
   // Result variable
   elements.push(
-    <span key="res" className={isTemp(result) ? 'token-temp' : 'token-var'}>
-      {result}
+    <span key="res" className={isTemp(resultVar) ? 'token-temp' : 'token-var'}>
+      {resultVar}
     </span>
   );
 
   elements.push(<span key="eq" className="token-assign"> = </span>);
 
   // Check binary op: arg1 op arg2
-  const binMatch = rhs.match(/^(\S+)\s+([+\-*/])\s+(\S+)$/);
+  const binMatch = rhs.match(/^(\S+)\s+([+\-*/%^]|==|!=|<=|>=|<|>)\s+(\S+)$/);
   if (binMatch) {
     const [, a1, op, a2] = binMatch;
     elements.push(

@@ -21,18 +21,28 @@ import Footer from './components/Footer.jsx';
 import Toast from './components/Toast.jsx';
 import './App.css';
 
-// Built-in example expressions from project requirements
+// Built-in example expressions grouped by category
 const EXAMPLES = [
-  { label: 'Simple Assignment', expr: 'a = b + c * d' },
-  { label: 'Parenthesized',     expr: 'x = (a + b) * (c - d)' },
-  { label: 'Mixed Precedence',  expr: 'y = a + b * c - d' },
-  { label: 'Division',          expr: 'result = (a + b) / (c - d)' },
-  { label: 'Multiple Ops',      expr: 'z = a * b + c / d' },
-  { label: 'With Constants',    expr: 'x = 10 + 20 * 3' },
-  { label: 'Unary Minus',       expr: 'a = -b + c' },
-  { label: 'No Assignment',     expr: 'a + b * c' },
-  { label: 'Nested Parens',     expr: 'y = (a + b * c) / (d - e)' },
-  { label: 'Complex Combo',     expr: 'z = -a + 5 * (b - 2)' },
+  // Standard Expressions
+  { label: 'Reference Tree', expr: 'z = a * b + c / d', category: 'Standard' },
+  { label: 'Simple Assignment', expr: 'a = b + c * d', category: 'Standard' },
+  { label: 'Parenthesized', expr: 'x = (a + b) * (c - d)', category: 'Standard' },
+  { label: 'Mixed Precedence', expr: 'y = a + b * c - d', category: 'Standard' },
+  { label: 'Unary Minus', expr: 'a = -b + c', category: 'Standard' },
+
+  // Optimization & CSE
+  { label: 'Common Subexpr (CSE)', expr: 'a = (b * c) + (b * c)', category: 'Optimization' },
+  { label: 'Constant Folding', expr: 'x = 10 + 20 * 3', category: 'Optimization' },
+  { label: 'Combined CSE & Folding', expr: 'z = 5 * 2 + (a * b) - (a * b)', category: 'Optimization' },
+
+  // Advanced Math Operations
+  { label: 'Power & Modulo', expr: 'y = a ^ 2 + b ^ 2 % c', category: 'Advanced' },
+  { label: 'Right-Assoc Power', expr: 'x = 2 ^ 3 ^ 2', category: 'Advanced' },
+  { label: 'Nested Division', expr: 'result = (a + b) / (c - d)', category: 'Advanced' },
+
+  // Multi-Statement Instructions
+  { label: 'Multi-Instruction', expr: 'a = b + c\nz = a * b + c / d', category: 'Multi-Statement' },
+  { label: 'Hypotenuse Calc', expr: '// calculate hypotenuse\na2 = b ^ 2\nc2 = c ^ 2\nh2 = a2 + c2', category: 'Multi-Statement' },
 ];
 
 function App() {
@@ -42,7 +52,10 @@ function App() {
   });
 
   // ---- Expression State ----
-  const [expression, setExpression] = useState('a = b + c * d');
+  const [expression, setExpression] = useState('z = a * b + c / d');
+
+  // ---- Live Evaluation Mode ----
+  const [liveMode, setLiveMode] = useState(false);
 
   // ---- Compilation Result ----
   const [result, setResult] = useState(null);
@@ -75,11 +88,24 @@ function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Initial compilation on load
+  // Initial compilation on load (loads reference expression)
   useEffect(() => {
-    const initial = compile('a = b + c * d');
+    const initial = compile('z = a * b + c / d');
     setResult(initial);
   }, []);
+
+  // Live auto-compilation as user types
+  useEffect(() => {
+    if (!liveMode) return;
+    if (!expression.trim()) return;
+
+    const timer = setTimeout(() => {
+      const res = compile(expression.trim());
+      setResult(res);
+    }, 320);
+
+    return () => clearTimeout(timer);
+  }, [expression, liveMode]);
 
   // Toast Helper
   const showToast = useCallback((message, type = 'success') => {
@@ -320,6 +346,8 @@ function App() {
               result={result}
               onCopy={handleCopy}
               onDownload={handleDownload}
+              liveMode={liveMode}
+              setLiveMode={setLiveMode}
             />
 
             {/* Bottom Analysis Tabs (Tokens, AST, Quadruples, Triples, Steps) */}
@@ -328,8 +356,19 @@ function App() {
                 {activeTab === 'tokens' && <TokenTable tokens={result.tokens} />}
                 {activeTab === 'ast' && <SyntaxTree ast={result.ast} />}
                 {activeTab === 'quadruples' && <QuadruplesTable quadruples={result.quadruples} />}
-                {activeTab === 'triples' && <TriplesTable triples={result.triples} />}
-                {activeTab === 'steps' && <StepExplanation steps={result.explanation} />}
+                {activeTab === 'triples' && (
+                  <TriplesTable
+                    triples={result.triples}
+                    indirectTriples={result.indirectTriples}
+                  />
+                )}
+                {activeTab === 'steps' && (
+                  <StepExplanation
+                    steps={result.explanation}
+                    instructions={result.instructions}
+                    variables={result.variables}
+                  />
+                )}
               </TabPanel>
             )}
 
